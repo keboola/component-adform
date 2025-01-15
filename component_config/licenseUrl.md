@@ -1,0 +1,1 @@
+https://github.com/keboola/component-adform/blob/master/LICENSE.md
