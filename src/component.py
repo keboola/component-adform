@@ -1,87 +1,111 @@
-"""
-Template Component main class.
-
-"""
-import csv
-from datetime import datetime
+import json
 import logging
 
+import requests
+from requests.exceptions import HTTPError
 from keboola.component.base import ComponentBase
 from keboola.component.exceptions import UserException
 
 from configuration import Configuration
 
 
+STATE_AUTH_ID = "auth_id"
+STATE_REFRESH_TOKEN = "#refresh_token"
+
+ENDPOINT_AUTHORIZE = "https://id.adform.com/sts/connect/authorize"
+ENDPOINT_TOKEN = "https://id.adform.com/sts/connect/token"
+
+
 class Component(ComponentBase):
-    """
-        Extends base class for general Python components. Initializes the CommonInterface
-        and performs configuration validation.
-
-        For easier debugging the data folder is picked up by default from `../data` path,
-        relative to working directory.
-
-        If `debug` parameter is present in the `config.json`, the default logger is set to verbose DEBUG mode.
-    """
-
     def __init__(self):
         super().__init__()
+        self._header = None
+        self.authorization = None
+        self.credentials = None
+
+        params = Configuration(**self.configuration.parameters)
+        logging.info(params)
+
+        #  Setup ID: Unique Master Data setup identifier (REQUIRED)
+        #  Date To: Upper boundary of the time interval for data retrieval (OPTIONAL)
+        #  Days Interval: Time interval for data retrieval in days (REQUIRED)
+        #  Hours Interval: Time interval for data retrieval in hours (REQUIRED)
+        #  Output Bucket: Name of the bucket in KBC (REQUIRED)
+        #  Datasets: List of datasets to retrieve (REQUIRED)
+        #  Metadata: List of metadata tables to retrieve (OPTIONAL)
+        #  File Charset: Encoding of the returned dataset (OPTIONAL)
+        #  Override primary keys: JSON structure of primary keys to override (OPTIONAL)
 
     def run(self):
-        """
-        Main execution code
-        """
+        pass
 
-        # ####### EXAMPLE TO REMOVE
-        # check for missing configuration parameters
-        params = Configuration(**self.configuration.parameters)
+    def _client_init(self):
+        self.authorization = self.configuration.config_data["authorization"]
+        if not self.authorization.get("oauth_api"):
+            raise UserException("For component run, please authenticate.")
 
-        # Access parameters in configuration
-        if params.print_hello:
-            logging.info("Hello World")
+        self.credentials = self.authorization["oauth_api"]["credentials"]
+        client_id = self.credentials["appKey"]
+        client_secret = self.credentials["#appSecret"]
 
-        # get input table definitions
-        input_tables = self.get_input_tables_definitions()
-        for table in input_tables:
-            logging.info(f'Received input table: {table.name} with path: {table.full_path}')
+        if not client_id or not client_secret:
+            client_id = self.credentials["app_key"]
+            client_secret = self.credentials["#app_secret"]
 
-        if len(input_tables) == 0:
-            raise UserException("No input tables found")
+        encrypted_data = json.loads(self.credentials["#data"])
 
-        # get last state data/in/state.json from previous run
-        previous_state = self.get_state_file()
-        logging.info(previous_state.get('some_parameter'))
+        state_file = self.get_state_file()
+        state_file_refresh_token = state_file.get(STATE_REFRESH_TOKEN, [])
+        state_file_auth_id = state_file.get(STATE_AUTH_ID, [])
 
-        # Create output table (Table definition - just metadata)
-        table = self.create_out_table_definition('output.csv', incremental=True, primary_key=['timestamp'])
+        access_token, refresh_token = self._get_oauth(
+            state_file_auth_id, state_file_refresh_token, encrypted_data, client_id, client_secret
+        )
+        self.write_state_file({
+            STATE_AUTH_ID: self.credentials.get("id", ""),
+            STATE_REFRESH_TOKEN: refresh_token
+        })
+        self._header = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {access_token}"
+        }
 
-        # get file path of the table (data/out/tables/Features.csv)
-        out_table_path = table.full_path
-        logging.info(out_table_path)
+    @staticmethod
+    def _get_refresh_token(auth_id, refresh_token, encrypted_data, credentials):
+        if not auth_id and refresh_token:
+            logging.info("Refresh token loaded from state file")
+        elif refresh_token and auth_id == credentials.get("id", ""):
+            logging.info("Refresh token loaded from state file")
+        else:
+            refresh_token = encrypted_data["refresh_token"]
+            logging.info("Refresh token loaded from authorization")
 
-        # Add timestamp column and save into out_table_path
-        input_table = input_tables[0]
-        with (open(input_table.full_path, 'r') as inp_file,
-              open(table.full_path, mode='wt', encoding='utf-8', newline='') as out_file):
-            reader = csv.DictReader(inp_file)
+        return refresh_token
 
-            columns = list(reader.fieldnames)
-            # append timestamp
-            columns.append('timestamp')
+    def _get_oauth(self, state_file_auth_id, state_file_refresh_token, encrypted_data, client_id, client_secret):
+        refresh_token = self._get_refresh_token(
+            state_file_auth_id,
+            state_file_refresh_token,
+            encrypted_data,
+            self.credentials
+        )
+        response = self._request_new_token(client_id, client_secret, refresh_token)
+        return response["access_token"], response["refresh_token"]
 
-            # write result with column added
-            writer = csv.DictWriter(out_file, fieldnames=columns)
-            writer.writeheader()
-            for in_row in reader:
-                in_row['timestamp'] = datetime.now().isoformat()
-                writer.writerow(in_row)
+    def _request_new_token(self, client_id, client_secret, refresh_token):
+        try:
+            response = requests.post(ENDPOINT_TOKEN, data={
+                'client_id': client_id,
+                'client_secret': client_secret,
+                'grant_type': 'refresh_token',
+                'refresh_token': refresh_token,
+                'scope': 'offline_access'  # is required to get new token via refresh token
+            })
+            response.raise_for_status()
+            return response.json()
 
-        # Save table manifest (output.csv.manifest) from the Table definition
-        self.write_manifest(table)
-
-        # Write new state - will be available next run
-        self.write_state_file({"some_state_parameter": "value"})
-
-        # ####### EXAMPLE TO REMOVE END
+        except HTTPError as e:
+            raise UserException('Failed to fetch token') from e
 
 
 """
@@ -90,7 +114,6 @@ class Component(ComponentBase):
 if __name__ == "__main__":
     try:
         comp = Component()
-        # this triggers the run method by default and is controlled by the configuration.action parameter
         comp.execute_action()
     except UserException as exc:
         logging.exception(exc)
