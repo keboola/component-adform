@@ -8,6 +8,7 @@ DOWNLOAD_F_URL_PATH = "/v1/buyer/masterdata/download/"
 
 class APIClient(HttpClient):
     def __init__(self, api_token, md_list_id):
+        super().__init__()
         self.api_token = api_token
         self.md_list_id = md_list_id
         self.max_retries = 5
