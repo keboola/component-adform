@@ -1,7 +1,8 @@
-keboola.component
-keboola.utils
-keboola.http-client
-freezegun
-mock
-pydantic
-requests
+keboola.component==1.6.10
+keboola.utils==1.1.0
+keboola.http-client==1.0.1
+freezegun==1.5.1
+mock==5.1.0
+pydantic==2.10.5
+requests==2.32.3
+duckdb==1.1.3
