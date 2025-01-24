@@ -6,8 +6,9 @@ import logging
 from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 
-import duckdb
 import requests
+import backoff
+import duckdb
 from duckdb.duckdb import DuckDBPyConnection
 from keboola.component.base import ComponentBase
 from keboola.component.dao import SupportedDataTypes, BaseType, ColumnDefinition
@@ -74,10 +75,11 @@ class Component(ComponentBase):
 
         if meta_files:
             client.download_file({'id': 'meta__zip', 'name': 'meta.zip', 'setup': setup_id}, FILES_TEMP_DIR)
-            self.unzip_file(f"{FILES_TEMP_DIR}/meta.zip", FILES_TEMP_DIR)
+            self.unzip_file(f"{FILES_TEMP_DIR}/meta.zip", os.path.join(FILES_TEMP_DIR, 'meta'))
             for dim in meta_files:
                 logging.info(f"Processing meta file: {dim}")
                 self.save_metadata_to_table(dim)
+        print("Component finished successfully")
 
     def save_to_table(self, prefix, downloaded_files, file_charset, custom_pkeys, incremental):
         if file_charset == "UTF-8":
@@ -113,27 +115,30 @@ class Component(ComponentBase):
         self.write_manifest(out_table)
 
     def save_metadata_to_table(self, dim):
-        view_name = dim.replace("-", "_")
-        self.duck.execute(f"CREATE VIEW {view_name} AS SELECT * FROM '{FILES_TEMP_DIR}/meta/{dim}.json'")
-
-        table_meta = self.duck.execute(f"""DESCRIBE {view_name};""").fetchall()
-        schema = OrderedDict((c[0], ColumnDefinition(data_types=BaseType(dtype=self.convert_base_types(c[1]))))
-                             for c in table_meta)
-
-        primary_key = ["id"] if schema.get("id") else None
-
-        out_table = self.create_out_table_definition(f"meta-{dim}.csv",
-                                                     schema=schema,
-                                                     primary_key=primary_key,
-                                                     has_header=True
-                                                     )
-
         try:
-            self.duck.execute(f"COPY {view_name} TO '{out_table.full_path}' (HEADER, DELIMITER ',', FORCE_QUOTE *)")
-        except duckdb.duckdb.ConversionException as e:
-            raise UserException(f"Error during query execution: {e}")
+            view_name = dim.replace("-", "_")
+            self.duck.execute(f"CREATE VIEW {view_name} AS SELECT * FROM '{FILES_TEMP_DIR}/meta/{dim}.json'")
 
-        self.write_manifest(out_table)
+            table_meta = self.duck.execute(f"""DESCRIBE {view_name};""").fetchall()
+            schema = OrderedDict((c[0], ColumnDefinition(data_types=BaseType(dtype=self.convert_base_types(c[1]))))
+                                 for c in table_meta)
+
+            primary_key = ["id"] if schema.get("id") else None
+
+            out_table = self.create_out_table_definition(f"meta-{dim}.csv",
+                                                         schema=schema,
+                                                         primary_key=primary_key,
+                                                         has_header=True
+                                                         )
+
+            self.duck.execute(f"COPY {view_name} TO '{out_table.full_path}' (HEADER, DELIMITER ',', FORCE_QUOTE *)")
+
+            self.write_manifest(out_table)
+
+        except duckdb.duckdb.IOException as e:
+            logging.error(f"Metadata file not found: {e}")
+        except Exception as e:
+            raise UserException(f"Error during processing metadata file: {e}")
 
     @staticmethod
     def ungzip_convert_to_utf8(in_files: list[str], source_encoding: str, input_dir: str) -> str:
@@ -202,11 +207,7 @@ class Component(ComponentBase):
         access_token, refresh_token = self._get_oauth(
             state_file_auth_id, state_file_refresh_token, encrypted_data, client_id, client_secret
         )
-        self.write_state_file({
-            STATE_AUTH_ID: self.credentials.get("id", ""),
-            STATE_REFRESH_TOKEN: refresh_token
-        })
-
+        self.save_new_token(refresh_token)
         return access_token
 
     def _get_oauth(self, state_file_auth_id, state_file_refresh_token, encrypted_data, client_id, client_secret):
@@ -245,6 +246,80 @@ class Component(ComponentBase):
             logging.info("Refresh token loaded from authorization")
 
         return refresh_token
+
+    def save_new_token(self, refresh_token: str) -> None:
+        if not self.environment_variables.stack_id:
+            logging.debug("Running locally, storing statefile directly.")
+
+            self.write_state_file({
+                STATE_AUTH_ID: self.credentials.get("id", ""),
+                STATE_REFRESH_TOKEN: refresh_token
+            })
+            return
+
+        logging.debug("Saving new refresh token to state using Keboola API.")
+
+        try:
+            encrypted_refresh_token = self.encrypt(refresh_token)
+        except requests.exceptions.RequestException:
+            logging.warning("Encrypt API is unavailable. Skipping token save at the beginning of the run.")
+            return
+
+        new_state = {
+            "component": {
+                STATE_AUTH_ID: self.credentials.get("id", ""),
+                STATE_REFRESH_TOKEN: encrypted_refresh_token
+            }}
+        try:
+            self.update_config_state(component_id=self.environment_variables.component_id,
+                                     configurationId=self.environment_variables.config_id,
+                                     state=new_state,
+                                     branch_id=self.environment_variables.branch_id)
+        except requests.exceptions.RequestException:
+            logging.warning("Storage API (update config state)"
+                            "is unavailable. Skipping token save at the beginning of the run.")
+            return
+
+    def _get_storage_token(self) -> str:
+        token = self.configuration.parameters.get('#storage_token') or self.environment_variables.token
+        if not token:
+            raise UserException("Cannot retrieve storage token from env variables and/or config.")
+        return token
+
+    @backoff.on_exception(backoff.expo, requests.exceptions.RequestException, max_tries=5)
+    def encrypt(self, token: str) -> str:
+        url = "https://encryption.keboola.com/encrypt"
+        params = {
+            "componentId": self.environment_variables.component_id,
+            "projectId": self.environment_variables.project_id,
+            "configId": self.environment_variables.config_id
+        }
+        headers = {"Content-Type": "text/plain"}
+
+        response = requests.post(url,
+                                 data=token,
+                                 params=params,
+                                 headers=headers)
+        response.raise_for_status()
+        return response.text
+
+    @backoff.on_exception(backoff.expo, requests.exceptions.RequestException, max_tries=5)
+    def update_config_state(self, component_id, configurationId, state, branch_id='default'):
+        if not branch_id:
+            branch_id = 'default'
+
+        region = os.environ.get('KBC_STACKID', 'connection.keboola.com')
+
+        url = f'https://{region}/v2/storage/branch/{branch_id}' \
+              f'/components/{component_id}/configs/' \
+              f'{configurationId}/state'
+
+        parameters = {'state': json.dumps(state)}
+        headers = {'Content-Type': 'application/x-www-form-urlencoded', 'X-StorageApi-Token': self._get_storage_token()}
+        response = requests.put(url,
+                                data=parameters,
+                                headers=headers)
+        response.raise_for_status()
 
     @staticmethod
     def init_duckdb() -> DuckDBPyConnection:

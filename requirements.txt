@@ -5,4 +5,5 @@ freezegun==1.5.1
 mock==5.1.0
 pydantic==2.10.5
 requests==2.32.3
+backoff==2.2.1
 duckdb==1.1.3
