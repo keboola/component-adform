@@ -69,12 +69,14 @@ class Component(ComponentBase):
         for prefix in datasets:
             downloaded_files = [f for f in filtered_files if f['name'].startswith(prefix)]
             if downloaded_files:
+                logging.info(f"Processing dataset: {prefix}")
                 self.save_to_table(prefix, downloaded_files, file_charset, custom_pkeys, incremental)
 
         if meta_files:
             client.download_file({'id': 'meta__zip', 'name': 'meta.zip', 'setup': setup_id}, FILES_TEMP_DIR)
             self.unzip_file(f"{FILES_TEMP_DIR}/meta.zip", FILES_TEMP_DIR)
             for dim in meta_files:
+                logging.info(f"Processing meta file: {dim}")
                 self.save_metadata_to_table(dim)
 
     def save_to_table(self, prefix, downloaded_files, file_charset, custom_pkeys, incremental):
@@ -111,20 +113,23 @@ class Component(ComponentBase):
         self.write_manifest(out_table)
 
     def save_metadata_to_table(self, dim):
-        self.duck.execute(f"CREATE VIEW {dim} AS SELECT * FROM '{FILES_TEMP_DIR}/meta/{dim}.json'")
+        view_name = dim.replace("-", "_")
+        self.duck.execute(f"CREATE VIEW {view_name} AS SELECT * FROM '{FILES_TEMP_DIR}/meta/{dim}.json'")
 
-        table_meta = self.duck.execute(f"""DESCRIBE {dim};""").fetchall()
+        table_meta = self.duck.execute(f"""DESCRIBE {view_name};""").fetchall()
         schema = OrderedDict((c[0], ColumnDefinition(data_types=BaseType(dtype=self.convert_base_types(c[1]))))
                              for c in table_meta)
 
+        primary_key = ["id"] if schema.get("id") else None
+
         out_table = self.create_out_table_definition(f"meta-{dim}.csv",
                                                      schema=schema,
-                                                     primary_key=["id"],
+                                                     primary_key=primary_key,
                                                      has_header=True
                                                      )
 
         try:
-            self.duck.execute(f"COPY {dim} TO '{out_table.full_path}' (HEADER, DELIMITER ',', FORCE_QUOTE *)")
+            self.duck.execute(f"COPY {view_name} TO '{out_table.full_path}' (HEADER, DELIMITER ',', FORCE_QUOTE *)")
         except duckdb.duckdb.ConversionException as e:
             raise UserException(f"Error during query execution: {e}")
 
@@ -250,8 +255,8 @@ class Component(ComponentBase):
         # TODO: On GCP consider changin tmp to /opt/tmp
         config = dict(temp_directory=DUCK_DB_DIR,
                       threads="1",
-                      memory_limit="128MB",
-                      max_memory="128MB")
+                      memory_limit="400MB",
+                      max_memory="400MB")
         conn = duckdb.connect(config=config)
 
         return conn
