@@ -4,13 +4,16 @@ from enum import Enum
 from pydantic import BaseModel, Field, ValidationError, computed_field
 from keboola.component.exceptions import UserException
 
+
 class LoadType(str, Enum):
     full_load = "full_load"
     incremental_load = "incremental_load"
 
+
 class OverridePKeyItem(BaseModel):
     pkey: List[str]
     dataset: str = Field()
+
 
 class Source(BaseModel):
     setup_id: str
@@ -20,6 +23,7 @@ class Source(BaseModel):
     datasets: List[str] = Field(default=["Click", "Impression", "Trackingpoint", "Event"])
     file_charset: str = Field(default="UTF-8")
     meta_files: Optional[List[str]] = Field(default=None)
+
 
 class Destination(BaseModel):
     file_name: str = Field(default=None)

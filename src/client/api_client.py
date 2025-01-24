@@ -25,29 +25,28 @@ class AdformClient(HttpClient):
                 "offset": offset
             }
             headers = {"Return-Total-Count": "true"}
-            
+
             response = self.get(endpoint, params=params, headers=headers)
 
             data = response
             if not data:  # No more results
                 break
-                
+
             for item in data:
                 yield item
-                
+
             if len(data) < PAGE_SIZE:  # Last page
                 break
-                
+
             offset += PAGE_SIZE
 
     def download_file(self, file_dict, dir_path):
         endpoint = f"{DOWNLOAD_F_URL_PATH}{file_dict['setup']}/{file_dict['id']}"
         response = self.get_raw(endpoint, stream=True)
         response.raise_for_status()
-        
         dir_path = os.path.abspath(dir_path)
         full_path = os.path.join(dir_path, file_dict['name'])
-            
+
         with open(full_path, "wb") as f:
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)

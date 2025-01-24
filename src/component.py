@@ -113,7 +113,6 @@ class Component(ComponentBase):
     def save_metadata_to_table(self, dim):
         self.duck.execute(f"CREATE VIEW {dim} AS SELECT * FROM '{FILES_TEMP_DIR}/meta/{dim}.json'")
 
-
         table_meta = self.duck.execute(f"""DESCRIBE {dim};""").fetchall()
         schema = OrderedDict((c[0], ColumnDefinition(data_types=BaseType(dtype=self.convert_base_types(c[1]))))
                              for c in table_meta)
