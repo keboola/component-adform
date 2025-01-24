@@ -26,7 +26,6 @@ class Source(BaseModel):
 
 
 class Destination(BaseModel):
-    file_name: str = Field(default=None)
     table_name: str = Field(default=None)
     load_type: LoadType = Field(default=LoadType.incremental_load)
     override_pkey: Optional[List[OverridePKeyItem]]

@@ -1,33 +1,45 @@
 {
   "type": "object",
-  "title": "Adform Metadata Configuration",
+  "title": "Component configuration",
+  "required": [
+    "source",
+    "destination"
+  ],
   "properties": {
-    "requeriedParameters": {
+    "source": {
       "type": "object",
-      "title": "Required Parameters",
-      "required": [],
+      "title": "Data source",
+      "required": [
+        "setup_id"
+      ],
       "properties": {
-        "setupId": {
+        "setup_id": {
           "type": "string",
           "title": "Setup ID",
-          "description": "Your unique Master Data setup identificator."
+          "description": "Your unique Master Data setup identificator",
+          "propertyOrder": 11
         },
-        "outputBucket": {
-          "type": "string",
-          "title": "Output Bucket ID",
-          "description": "Result Storage bucket ID path. e.g. in.c-adform-masterdata"
-        },
-        "daysInterval": {
-          "type": "integer",
+        "days_interval": {
+          "type": "number",
           "title": "Days interval",
-          "description": "Number of days since current date specifying the interval of retrieved data."
+          "default": 1,
+          "description": "Number of days since current date specifiing the interval of retrieved data.",
+          "propertyOrder": 12
         },
-        "hoursInterval": {
-          "type": "integer",
+        "hours_interval": {
+          "type": "number",
           "title": "Hours interval",
-          "description": "Number of hours since current date specifying the interval of retrieved data. Combine with `days interval` parameter."
+          "default": 0,
+          "description": "Number of hours since current date specifiing the interval of retrieved data. Combine with `days interval` parameter.",
+          "propertyOrder": 13
         },
-        "prefixes": {
+        "date_to": {
+          "type": "string",
+          "title": "Date To",
+          "description": "[Optional] Top boundary of the date interval. If not specified, current date is considered. Format: dd-mm-yyyy hh:mm [UTC]",
+          "propertyOrder": 14
+        },
+        "datasets": {
           "type": "array",
           "items": {
             "enum": [
@@ -53,59 +65,12 @@
             }
           },
           "title": "Datasets",
-          "format": "select",
-          "required": true,
-          "description": "List of required Masterdata datasets."
-        }
-      }
-    },
-    "optionialParameters": {
-      "type": "object",
-      "title": "Optional Parameters",
-      "properties": {
-        "dateTo": {
-          "type": "string",
-          "title": "Date To",
-          "description": "Top boundary of the date interval. If not specified, current date is considered. Format: dd-mm-yyyy hh:mm [UTC]"
+          "format": "checkbox",
+          "description": "List of required Masterdata datasets",
+          "uniqueItems": true,
+          "propertyOrder": 15
         },
-        "override_pkey": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "title": "List",
-            "format": "grid",
-            "required": [
-              "dataset",
-              "pkey"
-            ],
-            "properties": {
-              "pkey": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "title": "col name"
-                },
-                "title": "Primary key",
-                "propertyOrder": 5000
-              },
-              "dataset": {
-                "enum": [
-                  "Click",
-                  "Impression",
-                  "Trackingpoint",
-                  "Event"
-                ],
-                "type": "string",
-                "title": "Load type",
-                "default": "Click",
-                "propertyOrder": 4000
-              }
-            }
-          },
-          "title": "Override primary keys",
-          "description": "Set custom primary keys."
-        },
-        "fileCharset": {
+        "file_charset": {
           "enum": [
             "IBM00858",
             "IBM437",
@@ -150,9 +115,10 @@
           "type": "string",
           "title": "File charset",
           "default": "UTF-8",
-          "description": "Determines the datasets file charset. By default UTF-8, however it may vary in some cases. If specified incorrectly, the import to Storage will fail."
+          "description": "Determines the datasets file charset. By default UTF-8, however it may vary in some cases. If specified incorrectly, the import to Storage will fail.",
+          "propertyOrder": 16
         },
-        "metaFiles": {
+        "meta_files": {
           "type": "array",
           "items": {
             "enum": [
@@ -235,17 +201,108 @@
             }
           },
           "title": "Metadata",
-          "format": "select",
+          "format": "checkbox",
           "description": "List of required Masterdata metadata datasets",
-          "uniqueItems": true
+          "uniqueItems": true,
+          "propertyOrder": 18
         },
-        "alwaysGetMeta": {
+        "always_get_meta": {
           "type": "boolean",
           "title": "Always get meta files.",
           "default": true,
-          "description": "If set to true, meta data will be always retrieved. If set to false, the specified `since` interval will be used, i.e. only recently updated metadata will be fetched."
+          "description": "If set to true, meta data will be always retrieved. If set to false, the specified `since` interval will be used, i.e. only recently updated metadata will be fetched.",
+          "propertyOrder": 18
         }
-      }
+      },
+      "propertyOrder": 1
+    },
+    "destination": {
+      "type": "object",
+      "title": "Destination",
+      "required": [
+        "load_type"
+      ],
+      "properties": {
+        "load_type": {
+          "enum": [
+            "incremental_load",
+            "full_load"
+          ],
+          "type": "string",
+          "title": "Load Type",
+          "default": "incremental_load",
+          "options": {
+            "enum_titles": [
+              "Incremental Load",
+              "Full Load"
+            ],
+            "dependencies": {
+              "parquet_output": false
+            }
+          },
+          "description": "If Full load is used, the destination table will be overwritten every run. If Incremental Load is used, data will be upserted into the destination table based on the primary key. Append modes do not contain any primary keys and are not deduplicated.",
+          "propertyOrder": 21
+        },
+        "table_name": {
+          "type": "string",
+          "title": "Table name",
+          "default": "",
+          "description": "(Optional) Specify the table name (without the filetype) if you leave this field empty, the default name container_blob will be used.",
+          "options": {
+            "dependencies": {
+              "parquet_output": false
+            }
+          },
+          "propertyOrder": 22
+        },
+        "override_pkey": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "title": "List",
+        "format": "grid",
+        "required": [
+          "dataset",
+          "pkey"
+        ],
+        "properties": {
+          "pkey": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "title": "col name"
+            },
+            "title": "Primary key",
+            "propertyOrder": 23
+          },
+          "dataset": {
+            "enum": [
+              "Click",
+              "Impression",
+              "Trackingpoint",
+              "Event"
+            ],
+            "type": "string",
+            "title": "Load type",
+            "default": "CLick",
+            "propertyOrder": 4000
+          }
+        }
+      },
+      "title": "Override primary keys",
+      "description": "Set custom primary keys.",
+      "propertyOrder": 5050
+    }
+      },
+      "propertyOrder": 2
+    },
+    "debug": {
+      "type": "boolean",
+      "title": "Debug mode",
+      "format": "checkbox",
+      "default": false,
+      "description": "If enabled, the component will produce detailed logs",
+      "propertyOrder": 3
     }
   }
 }

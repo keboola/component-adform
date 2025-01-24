@@ -1,51 +1,89 @@
-Adform Metadata extractor
-=============
+# Adform Metadata Extractor
 
-Description
+A Keboola Connection component for extracting data from Adform masterdata service.
 
-**Table of contents:**
+## Prerequisites
 
-[TOC]
+- Agency account with permission to access Adform External API (https://api.adform.com/)
+- Master Data service enabled
+- Valid credentials provided by Adform after contract signing
 
-Functionality notes
-===================
+## Authorization
 
-Prerequisites
-=============
+The component uses OAuth 2.0 for authentication. Authorize your account by clicking the "AUTHORIZE ACCOUNT" button in the authorization section of the component. Continue with the authorization process in the Adform masterdata service.
 
-Get the API token, register application, etc.
+## Configuration Parameters
 
-Features
-========
+The component accepts the following configuration parameters:
 
-| **Feature**             | **Note**                                      |
-|-------------------------|-----------------------------------------------|
-| Generic UI form         | Dynamic UI form                               |
-| Row Based configuration | Allows structuring the configuration in rows. |
-| oAuth                   | oAuth authentication enabled                  |
-| Incremental loading     | Allows fetching data in new increments.       |
-| Backfill mode           | Support for seamless backfill setup.          |
-| Date range filter       | Specify date range.                           |
+### Source Configuration
 
-Supported endpoints
-===================
+- `setup_id` (required): Your unique Master Data setup identifier provided by Adform
+- `days_interval` (required): Number of days to look back for data retrieval
+- `hours_interval` (required): Number of hours to look back for data retrieval
+- `date_to` (optional): Upper boundary of the time interval for data retrieval
+  - Format: "YYYY-MM-DD HH:MM" or relative 1 day ago, 1 week ago
+  - If not specified, current time is used
+- `datasets` (optional): List of datasets to retrieve
+  - Default: ["Click", "Impression", "Trackingpoint", "Event"]
+- `file_charset` (optional): Character encoding of the returned dataset
+  - Default: "UTF-8"
+- `meta_files` (optional): List of metadata files to retrieve
+  - Example: ["geolocations", "campaigns"]
 
-If you need more endpoints, please submit your request to
-[ideas.keboola.com](https://ideas.keboola.com/)
+### Destination Configuration
 
-Configuration
-=============
+- `table_name` (optional): Name of the destination table
+- `load_type` (optional): Type of data load
+  - Options: "full_load" or "incremental_load"
+  - Default: "incremental_load"
+- `override_pkey` (optional): List of primary key overrides for specific datasets
+  - Format: 
+    ```json
+    {
+      "dataset": "dataset_name",
+      "pkey": ["column1", "column2"]
+    }
+    ```
 
-Param 1
--------
+### Debug Mode
 
-Param 2
--------
+- `debug` (optional): Enable debug mode
+  - Default: false
+  - Set to true for additional logging
 
-Output
-======
+## Example Configuration
 
-List of tables, foreign keys, schema.
+```json
+{
+  "source": {
+    "setup_id": "your-setup-id",
+    "days_interval": 7,
+    "hours_interval": 24,
+    "datasets": ["Click", "Impression"],
+    "meta_files": ["geolocations", "campaigns"],
+    "file_charset": "UTF-8"
+  },
+  "destination": {
+    "table_name": "adform_data",
+    "load_type": "incremental_load",
+    "override_pkey": [
+      {
+        "dataset": "Click",
+        "pkey": ["id", "timestamp"]
+      }
+    ]
+  },
+  "debug": false
+}
+```
+
+## Important Notes
+
+1. For incremental loads, ensure primary keys are properly set in the KBC Storage UI after the first successful import.
+2. Metadata tables are always imported in full_load mode, overwriting previous data.
+3. The time interval for data retrieval is calculated based on both `days_interval` and `hours_interval`.
+
 
 Development
 -----------
