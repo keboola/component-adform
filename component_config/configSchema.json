@@ -23,20 +23,20 @@
           "type": "number",
           "title": "Days interval",
           "default": 1,
-          "description": "Number of days since current date specifiing the interval of retrieved data.",
+          "description": "Number of days since current date specifying the interval of retrieved data.",
           "propertyOrder": 12
         },
         "hours_interval": {
           "type": "number",
           "title": "Hours interval",
           "default": 0,
-          "description": "Number of hours since current date specifiing the interval of retrieved data. Combine with `days interval` parameter.",
+          "description": "Number of hours since current date specifying the interval of retrieved data. Combine with `days_interval` parameter.",
           "propertyOrder": 13
         },
         "date_to": {
           "type": "string",
           "title": "Date To",
-          "description": "[Optional] Top boundary of the date interval. If not specified, current date is considered. Format: dd-mm-yyyy hh:mm [UTC]",
+          "description": "(Optional) Top boundary of the date interval. If not specified, current date is considered. Format: dd-mm-yyyy hh:mm [UTC]",
           "propertyOrder": 14
         },
         "datasets": {

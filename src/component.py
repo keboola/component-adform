@@ -18,6 +18,7 @@ from requests.exceptions import HTTPError
 from configuration import Configuration
 from client.api_client import AdformClient
 
+DUCK_DB_MAX_MEMORY = "400MB"
 DUCK_DB_DIR = os.path.join(os.environ.get('TMPDIR', '/tmp'), 'duckdb')
 FILES_TEMP_DIR = os.path.join(os.environ.get('TMPDIR', '/tmp'), 'files')
 
@@ -82,17 +83,17 @@ class Component(ComponentBase):
         print("Component finished successfully")
 
     def save_to_table(self, prefix, downloaded_files, file_charset, custom_pkeys, incremental):
-        if file_charset == "UTF-8":
+        if file_charset == "UTF-8": # if using UTF-8 we can load directly to DuckDB which handles gzip
             self.duck.execute(f"CREATE VIEW {prefix} AS SELECT * FROM '{FILES_TEMP_DIR}/{prefix}_*.csv.gz'")
 
-        else:
+        else: # if not UTF-8 we need to first ungzip and convert to UTF-8 and then pass to DuckDB
             to_process = [f['name'] for f in downloaded_files if f['name'].startswith(prefix)]
             unzipped = self.ungzip_convert_to_utf8(to_process, file_charset, FILES_TEMP_DIR)
             self.duck.execute(f"CREATE VIEW {prefix} AS SELECT * FROM '{unzipped}/{prefix}_*.csv'")
 
         table_meta = self.duck.execute(f"""DESCRIBE {prefix};""").fetchall()
-        schema = OrderedDict((c[0], ColumnDefinition(data_types=BaseType(dtype=self.convert_base_types(c[1]))))
-                             for c in table_meta)
+        schema = OrderedDict({c[0]: ColumnDefinition(data_types=BaseType(dtype=self.convert_base_types(c[1])))
+                              for c in table_meta})
 
         primary_key = None
         if custom_pkeys:
@@ -120,8 +121,8 @@ class Component(ComponentBase):
             self.duck.execute(f"CREATE VIEW {view_name} AS SELECT * FROM '{FILES_TEMP_DIR}/meta/{dim}.json'")
 
             table_meta = self.duck.execute(f"""DESCRIBE {view_name};""").fetchall()
-            schema = OrderedDict((c[0], ColumnDefinition(data_types=BaseType(dtype=self.convert_base_types(c[1]))))
-                                 for c in table_meta)
+            schema = OrderedDict({c[0]: ColumnDefinition(data_types=BaseType(dtype=self.convert_base_types(c[1])))
+                                 for c in table_meta})
 
             primary_key = ["id"] if schema.get("id") else None
 
@@ -330,8 +331,7 @@ class Component(ComponentBase):
         # TODO: On GCP consider changin tmp to /opt/tmp
         config = dict(temp_directory=DUCK_DB_DIR,
                       threads="1",
-                      memory_limit="400MB",
-                      max_memory="400MB")
+                      max_memory=DUCK_DB_MAX_MEMORY)
         conn = duckdb.connect(config=config)
 
         return conn

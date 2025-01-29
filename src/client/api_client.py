@@ -1,5 +1,4 @@
 from collections.abc import Iterator
-from typing import Dict
 from keboola.http_client import HttpClient
 import os
 
@@ -16,7 +15,7 @@ class AdformClient(HttpClient):
         self.update_auth_header({"Authorization": f'Bearer {api_token}'})
         self.setup_id = setup_id
 
-    def retrieve_file_list(self) -> Iterator[Dict]:
+    def retrieve_file_list(self) -> Iterator[dict]:
         offset = 0
         while True:
             endpoint = f"{MD_FILES_URL_PATH}{self.setup_id}"

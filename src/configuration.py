@@ -32,7 +32,7 @@ class Destination(BaseModel):
 
     @computed_field
     def incremental(self) -> bool:
-        return self.load_type in (LoadType.incremental_load)
+        return self.load_type == LoadType.incremental_load
 
 
 class Configuration(BaseModel):
