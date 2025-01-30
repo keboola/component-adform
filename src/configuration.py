@@ -1,35 +1,44 @@
 import logging
 from typing import List, Optional
-from pydantic import BaseModel, Field, ValidationError
+from enum import Enum
+from pydantic import BaseModel, Field, ValidationError, computed_field
 from keboola.component.exceptions import UserException
 
 
-class RequiredParameters(BaseModel):
-    setupId: str
-    outputBucket: str
-    daysInterval: int
-    hoursInterval: int
-    prefixes: List[str] = Field(default=["Click", "Impression", "Trackingpoint", "Event"])
+class LoadType(str, Enum):
+    full_load = "full_load"
+    incremental_load = "incremental_load"
 
 
 class OverridePKeyItem(BaseModel):
     pkey: List[str]
-    dataset: str = Field(default="Click")
+    dataset: str = Field()
 
 
-class OptionalParameters(BaseModel):
-    dateTo: Optional[str]
+class Source(BaseModel):
+    setup_id: str
+    days_interval: int
+    hours_interval: int
+    date_to: Optional[str]
+    datasets: List[str] = Field(default=["Click", "Impression", "Trackingpoint", "Event"])
+    file_charset: str = Field(default="UTF-8")
+    meta_files: Optional[List[str]] = Field(default=None)
+
+
+class Destination(BaseModel):
+    table_name: str = Field(default=None)
+    load_type: LoadType = Field(default=LoadType.incremental_load)
     override_pkey: Optional[List[OverridePKeyItem]]
-    fileCharset: str = Field(default="UTF-8")
-    metaFiles: Optional[List[str]]
-    alwaysGetMeta: bool = Field(default=True)
+
+    @computed_field
+    def incremental(self) -> bool:
+        return self.load_type == LoadType.incremental_load
 
 
 class Configuration(BaseModel):
-    print_hello: bool
+    source: Source
+    destination: Destination
     debug: bool = False
-    requiredParameters: RequiredParameters
-    optionalParameters: OptionalParameters
 
     def __init__(self, **data):
         try:
