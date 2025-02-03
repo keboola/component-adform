@@ -257,35 +257,30 @@ class Component(ComponentBase):
         return refresh_token
 
     def save_new_token(self, refresh_token: str) -> None:
-        if not self.environment_variables.stack_id:
-            logging.debug("Running locally, storing statefile directly.")
+        self.write_state_file({STATE_AUTH_ID: self.credentials.get("id", ""), STATE_REFRESH_TOKEN: refresh_token})
+        if self.environment_variables.stack_id:
+            logging.debug("Saving new refresh token to state using Keboola API.")
+            try:
+                encrypted_refresh_token = self.encrypt(refresh_token)
+            except requests.exceptions.RequestException:
+                logging.warning("Encrypt API is unavailable. Skipping token save at the beginning of the run.")
+                return
 
-            self.write_state_file({STATE_AUTH_ID: self.credentials.get("id", ""), STATE_REFRESH_TOKEN: refresh_token})
-            return
-
-        logging.debug("Saving new refresh token to state using Keboola API.")
-
-        try:
-            encrypted_refresh_token = self.encrypt(refresh_token)
-        except requests.exceptions.RequestException:
-            logging.warning("Encrypt API is unavailable. Skipping token save at the beginning of the run.")
-            return
-
-        new_state = {
-            "component": {STATE_AUTH_ID: self.credentials.get("id", ""), STATE_REFRESH_TOKEN: encrypted_refresh_token}
-        }
-        try:
-            self.update_config_state(
-                component_id=self.environment_variables.component_id,
-                configurationId=self.environment_variables.config_id,
-                state=new_state,
-                branch_id=self.environment_variables.branch_id,
-            )
-        except requests.exceptions.RequestException:
-            logging.warning(
-                "Storage API (update config state)is unavailable. Skipping token save at the beginning of the run."
-            )
-            return
+            new_state = {
+                "component": {STATE_AUTH_ID: self.credentials.get("id", ""), STATE_REFRESH_TOKEN: encrypted_refresh_token}
+            }
+            try:
+                self.update_config_state(
+                    component_id=self.environment_variables.component_id,
+                    configurationId=self.environment_variables.config_id,
+                    state=new_state,
+                    branch_id=self.environment_variables.branch_id,
+                )
+            except requests.exceptions.RequestException:
+                logging.warning(
+                    "Storage API (update config state)is unavailable. Skipping token save at the beginning of the run."
+                )
+                return
 
     def _get_storage_token(self) -> str:
         token = self.configuration.parameters.get("#storage_token") or self.environment_variables.token
