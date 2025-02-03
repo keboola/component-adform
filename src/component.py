@@ -267,7 +267,10 @@ class Component(ComponentBase):
                 return
 
             new_state = {
-                "component": {STATE_AUTH_ID: self.credentials.get("id", ""), STATE_REFRESH_TOKEN: encrypted_refresh_token}
+                "component": {
+                    STATE_AUTH_ID: self.credentials.get("id", ""),
+                    STATE_REFRESH_TOKEN: encrypted_refresh_token
+                }
             }
             try:
                 self.update_config_state(
