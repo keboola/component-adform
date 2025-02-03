@@ -257,35 +257,43 @@ class Component(ComponentBase):
         return refresh_token
 
     def save_new_token(self, refresh_token: str) -> None:
-        if not self.environment_variables.stack_id:
-            logging.debug("Running locally, storing statefile directly.")
+        """
+        The refresh token is invalidated after each use, so we need to save the new one.
 
-            self.write_state_file({STATE_AUTH_ID: self.credentials.get("id", ""), STATE_REFRESH_TOKEN: refresh_token})
-            return
+        We need to have two ways of saving the token:
+        - To data/out/state.json via the component library (used by KBC when the job is successful)
+        - Via the Storage API (for cases when the job fails)
 
-        logging.debug("Saving new refresh token to state using Keboola API.")
+        :param refresh_token: The new refresh token to be saved
+        :return: None
+        """
+        self.write_state_file({STATE_AUTH_ID: self.credentials.get("id", ""), STATE_REFRESH_TOKEN: refresh_token})
+        if self.environment_variables.stack_id:
+            logging.debug("Saving new refresh token to state using Keboola API.")
+            try:
+                encrypted_refresh_token = self.encrypt(refresh_token)
+            except requests.exceptions.RequestException:
+                logging.warning("Encrypt API is unavailable. Skipping token save at the beginning of the run.")
+                return
 
-        try:
-            encrypted_refresh_token = self.encrypt(refresh_token)
-        except requests.exceptions.RequestException:
-            logging.warning("Encrypt API is unavailable. Skipping token save at the beginning of the run.")
-            return
-
-        new_state = {
-            "component": {STATE_AUTH_ID: self.credentials.get("id", ""), STATE_REFRESH_TOKEN: encrypted_refresh_token}
-        }
-        try:
-            self.update_config_state(
-                component_id=self.environment_variables.component_id,
-                configurationId=self.environment_variables.config_id,
-                state=new_state,
-                branch_id=self.environment_variables.branch_id,
-            )
-        except requests.exceptions.RequestException:
-            logging.warning(
-                "Storage API (update config state)is unavailable. Skipping token save at the beginning of the run."
-            )
-            return
+            new_state = {
+                "component": {
+                    STATE_AUTH_ID: self.credentials.get("id", ""),
+                    STATE_REFRESH_TOKEN: encrypted_refresh_token
+                }
+            }
+            try:
+                self.update_config_state_api(
+                    component_id=self.environment_variables.component_id,
+                    configurationId=self.environment_variables.config_id,
+                    state=new_state,
+                    branch_id=self.environment_variables.branch_id,
+                )
+            except requests.exceptions.RequestException:
+                logging.warning(
+                    "Storage API (update config state)is unavailable. Skipping token save at the beginning of the run."
+                )
+                return
 
     def _get_storage_token(self) -> str:
         token = self.configuration.parameters.get("#storage_token") or self.environment_variables.token
@@ -308,11 +316,11 @@ class Component(ComponentBase):
         return response.text
 
     @backoff.on_exception(backoff.expo, requests.exceptions.RequestException, max_tries=5)
-    def update_config_state(self, component_id, configurationId, state, branch_id="default"):
+    def update_config_state_api(self, component_id, configurationId, state, branch_id="default"):
         if not branch_id:
             branch_id = "default"
 
-        region = os.environ.get("KBC_STACKID", "connection.keboola.com")
+        region = os.environ.get("KBC_STACKID")
 
         url = (
             f"https://{region}/v2/storage/branch/{branch_id}/components/{component_id}/configs/{configurationId}/state"
