@@ -90,56 +90,14 @@ class Component(ComponentBase):
 
     def save_to_table(self, prefix, downloaded_files, file_charset, custom_pkeys, incremental):
         if file_charset == "UTF-8":  # if using UTF-8 we can load directly to DuckDB which handles gzip
-            if not downloaded_files:
-                raise UserException(f"No files downloaded for dataset prefix '{prefix}'.")
-
-            sample_file = downloaded_files[0]["name"]
-            sample_path = os.path.join(FILES_TEMP_DIR, sample_file)
-
-            try:
-                sample_schema = self.duck.execute(f"""
-                    DESCRIBE SELECT * FROM read_csv_auto('{sample_path}')
-                """).fetchall()
-            except duckdb.duckdb.IOException as e:
-                raise UserException(f"Failed to read schema from sample file {sample_file}: {e}")
-
-            existing_columns = {col[0] for col in sample_schema}
-            logging.info(f"Detected schema from sample file '{sample_file}': {sample_schema}")
-
-            applied_fixed_types = {k: v for k, v in FIXED_TYPES.items() if k in existing_columns}
-
-            # Warning if detected type is different from FIXED_TYPES
-            for col_name, fixed_type in applied_fixed_types.items():
-                detected_type = next((col[1] for col in sample_schema if col[0] == col_name), None)
-                if detected_type and detected_type.upper() != fixed_type:
-                    logging.warning(
-                        f"Column '{col_name}' has detected type '{detected_type}', "
-                        f"but FIXED_TYPES enforces '{fixed_type}'."
-                    )
-
-            def create_view_with_columns(columns_override=None):
-                if columns_override:
-                    columns_def = ", ".join(f"'{col}': '{dtype}'" for col, dtype in columns_override.items())
-                    logging.info(f"Applying fixed column types: {columns_override}")
-                    columns_param = f", columns={{ {columns_def} }}"
-                else:
-                    logging.info(f"No fixed column types to apply for dataset '{prefix}'. Using default autodetection.")
-                    columns_param = ""
-
-                self.duck.execute(f"""
-                    CREATE VIEW {prefix} AS
-                    SELECT * FROM read_csv_auto(
-                        '{FILES_TEMP_DIR}/{prefix}_*.csv.gz',
-                        union_by_name=true
-                        {columns_param}
-                    )
-                """)
-
-            try:
-                create_view_with_columns(applied_fixed_types if applied_fixed_types else None)
-            except duckdb.duckdb.IOException as e:
-                logging.warning(f"Failed to create view with fixed types due to: {e}. Falling back to autodetection.")
-                create_view_with_columns(None)
+            self.duck.execute(f"""
+                CREATE VIEW {prefix} AS
+                SELECT * FROM read_csv(
+                    '{FILES_TEMP_DIR}/{prefix}_*.csv.gz',
+                    union_by_name=true,
+                    types={{'VisibilityTime': 'BIGINT'}}
+                )
+            """)
 
         else:  # if not UTF-8 we need to first ungzip and convert to UTF-8 and then pass to DuckDB
             to_process = [f["name"] for f in downloaded_files if f["name"].startswith(prefix)]
