@@ -28,12 +28,6 @@ STATE_REFRESH_TOKEN = "#refresh_token"
 ENDPOINT_AUTHORIZE = "https://id.adform.com/sts/connect/authorize"
 ENDPOINT_TOKEN = "https://id.adform.com/sts/connect/token"
 
-# DuckDB does not support all types, so we need to convert them
-# If you need to convert some type, add it to this dictionary
-FIXED_TYPES = {
-    "VisibilityTime": "BIGINT",
-}
-
 
 class Component(ComponentBase):
     def __init__(self):
