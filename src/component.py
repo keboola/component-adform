@@ -89,7 +89,11 @@ class Component(ComponentBase):
                 SELECT * FROM read_csv(
                     '{FILES_TEMP_DIR}/{prefix}_*.csv.gz',
                     union_by_name=true,
-                    types={{'VisibilityTime': 'BIGINT'}}
+                    types={
+                        'VisibilityTime': 'BIGINT',
+                        'MouseOvers': 'BIGINT',
+                        'MouseOverTime': 'BIGINT'
+                    }
                 )
             """)
 
