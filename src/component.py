@@ -100,7 +100,18 @@ class Component(ComponentBase):
         else:  # if not UTF-8 we need to first ungzip and convert to UTF-8 and then pass to DuckDB
             to_process = [f["name"] for f in downloaded_files if f["name"].startswith(prefix)]
             unzipped = self.ungzip_convert_to_utf8(to_process, file_charset, FILES_TEMP_DIR)
-            self.duck.execute(f"CREATE VIEW {prefix} AS SELECT * FROM '{unzipped}/{prefix}_*.csv'")
+            self.duck.execute(f"""
+                CREATE VIEW {prefix} AS
+                SELECT * FROM read_csv(
+                    '{unzipped}/{prefix}_*.csv.gz',
+                    union_by_name=true,
+                    types={
+                        'VisibilityTime': 'BIGINT',
+                        'MouseOvers': 'BIGINT',
+                        'MouseOverTime': 'BIGINT'
+                    }
+                )
+            """)
 
         table_meta = self.duck.execute(f"""DESCRIBE {prefix};""").fetchall()
         schema = OrderedDict(
