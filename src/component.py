@@ -90,9 +90,9 @@ class Component(ComponentBase):
                     '{FILES_TEMP_DIR}/{prefix}_*.csv.gz',
                     union_by_name=true,
                     types={
-                        'VisibilityTime': 'BIGINT',
-                        'MouseOvers': 'BIGINT',
-                        'MouseOverTime': 'BIGINT'
+                        'VisibilityTime': 'INTEGER',
+                        'MouseOvers': 'INTEGER',
+                        'MouseOverTime': 'INTEGER'
                     }
                 )
             """)
@@ -106,9 +106,9 @@ class Component(ComponentBase):
                     '{unzipped}/{prefix}_*.csv.gz',
                     union_by_name=true,
                     types={
-                        'VisibilityTime': 'BIGINT',
-                        'MouseOvers': 'BIGINT',
-                        'MouseOverTime': 'BIGINT'
+                        'VisibilityTime': 'INTEGER',
+                        'MouseOvers': 'INTEGER',
+                        'MouseOverTime': 'INTEGER'
                     }
                 )
             """)
