@@ -89,11 +89,7 @@ class Component(ComponentBase):
                 SELECT * FROM read_csv(
                     '{FILES_TEMP_DIR}/{prefix}_*.csv.gz',
                     union_by_name=true,
-                    types={
-                        'VisibilityTime': 'VARCHAR',
-                        'MouseOvers': 'VARCHAR',
-                        'MouseOverTime': 'VARCHAR'
-                    }
+                    all_varchar=true
                 )
             """)
 
@@ -105,11 +101,7 @@ class Component(ComponentBase):
                 SELECT * FROM read_csv(
                     '{unzipped}/{prefix}_*.csv.gz',
                     union_by_name=true,
-                    types={
-                        'VisibilityTime': 'VARCHAR',
-                        'MouseOvers': 'VARCHAR',
-                        'MouseOverTime': 'VARCHAR'
-                    }
+                    all_varchar=true
                 )
             """)
 
