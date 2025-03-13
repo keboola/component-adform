@@ -129,10 +129,10 @@ class Component(ComponentBase):
 
     def save_metadata_to_table(self, dim):
         try:
-            view_name = dim.replace("-", "_")
-            self.duck.execute(f"CREATE VIEW {view_name} AS SELECT * FROM '{FILES_TEMP_DIR}/meta/{dim}.json'")
+            table_name = dim.replace("-", "_")
+            self.duck.execute(f"CREATE TABLE {table_name} AS SELECT * FROM '{FILES_TEMP_DIR}/meta/{dim}.json'")
 
-            table_meta = self.duck.execute(f"""DESCRIBE {view_name};""").fetchall()
+            table_meta = self.duck.execute(f"""DESCRIBE {table_name};""").fetchall()
             schema = OrderedDict(
                 {c[0]: ColumnDefinition(data_types=BaseType(dtype=self.convert_base_types(c[1]))) for c in table_meta}
             )
@@ -143,9 +143,16 @@ class Component(ComponentBase):
                 f"meta-{dim}.csv", schema=schema, primary_key=primary_key, has_header=True
             )
 
-            self.duck.execute(f"COPY {view_name} TO '{out_table.full_path}' (HEADER, DELIMITER ',', FORCE_QUOTE *)")
+            if dim == "banners-adgroups":
+                # if table doesn't contain deleted column, create it and keep it null
+                if "deleted" not in schema:
+                    logging.info(f"Adding 'deleted' column to meta-{dim} table")
+                    self.duck.execute(f"ALTER TABLE {table_name} ADD COLUMN deleted VARCHAR;")
+
+            self.duck.execute(f"COPY {table_name} TO '{out_table.full_path}' (HEADER, DELIMITER ',', FORCE_QUOTE *)")
 
             self.write_manifest(out_table)
+            self.duck.execute(f"DROP TABLE {table_name};")
 
         except duckdb.duckdb.IOException as e:
             logging.error(f"Metadata file not found: {e}")
@@ -317,7 +324,8 @@ class Component(ComponentBase):
 
     @backoff.on_exception(backoff.expo, requests.exceptions.RequestException, max_tries=5)
     def encrypt(self, token: str) -> str:
-        url = "https://encryption.keboola.com/encrypt"
+        region = os.environ.get("KBC_STACKID").replace("connection.", "")
+        url = f"https://encryption.{region}/encrypt"
         params = {
             "componentId": self.environment_variables.component_id,
             "projectId": self.environment_variables.project_id,
