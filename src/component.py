@@ -152,6 +152,7 @@ class Component(ComponentBase):
             self.duck.execute(f"COPY {table_name} TO '{out_table.full_path}' (HEADER, DELIMITER ',', FORCE_QUOTE *)")
 
             self.write_manifest(out_table)
+            self.duck.execute(f"DROP TABLE {table_name};")
 
         except duckdb.duckdb.IOException as e:
             logging.error(f"Metadata file not found: {e}")
